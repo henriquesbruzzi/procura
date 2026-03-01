@@ -29,6 +29,7 @@ const LEAD_AREA_MAPPING: Record<string, { area: string; motivo: string; descrica
   ceis: { area: "administrativo", motivo: "empresa_sancionada", descricao: "Empresa inidônea ou suspensa (CEIS)" },
   cnep: { area: "administrativo", motivo: "empresa_punida", descricao: "Empresa punida (CNEP)" },
   transparencia: { area: "licitatorio", motivo: "convenio_federal", descricao: "Convênio federal (Portal da Transparência)" },
+  tcu: { area: "administrativo", motivo: "inidoneidade_tcu", descricao: "Empresa com problema no TCU (Certidões APF)" },
 };
 
 function getLeadAreaMapping(fonte: string, categoria: string, tipoPessoa?: string): { area: string; motivo: string; descricao: string } {
@@ -929,7 +930,7 @@ export async function seedDefaultEnrichmentJobs(): Promise<void> {
       name: "Enriquecer Telefones (auto)",
       jobType: "enrich_phones",
       intervalHours: 6,
-      maxEmailsPerRun: 100,
+      maxEmailsPerRun: 200,
       searchKeyword: "",
       sourceType: "leads",
       isActive: true,
@@ -943,7 +944,7 @@ export async function seedDefaultEnrichmentJobs(): Promise<void> {
     const [job] = await db.insert(automationJobs).values({
       name: "Validar WhatsApp (auto)",
       jobType: "whatsapp_validate",
-      intervalHours: 12,
+      intervalHours: 4,
       maxEmailsPerRun: 200,
       searchKeyword: "",
       sourceType: "leads",

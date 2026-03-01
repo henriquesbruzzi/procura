@@ -14,6 +14,7 @@ import type {
   CnpjaResponse,
   CnpjWsResponse,
   ReceitaWsResponse,
+  OpenCnpjResponse,
 } from "../types/cnpj.types.js";
 
 interface SecondaryData {
@@ -54,6 +55,13 @@ const receitawsQueue = new PQueue({
   concurrency: 1,
   intervalCap: 3,
   interval: 60_000,
+});
+
+// OpenCNPJ: 50 req/s, free, no auth - secondary phone/email source
+const openCnpjQueue = new PQueue({
+  concurrency: 5,
+  intervalCap: 50,
+  interval: 1000,
 });
 
 function isCacheValid(lastLookupAt: string | null): boolean {
@@ -192,6 +200,35 @@ async function fetchReceitaWsData(cnpj: string): Promise<SecondaryData> {
   }
 }
 
+async function fetchOpenCnpjData(cnpj: string): Promise<SecondaryData> {
+  try {
+    const res = await fetchWithRetry(
+      `https://api.opencnpj.org/${cnpj}`,
+      undefined,
+      2
+    );
+    if (!res.ok) return { email: null, phones: [] };
+    const data = (await res.json()) as OpenCnpjResponse;
+    const email = data.email || null;
+    const phones = (data.telefones || [])
+      .filter((t) => !t.is_fax)
+      .map((t) => normalizePhone(`${t.ddd}${t.numero}`))
+      .filter((p): p is string => p !== null);
+    return {
+      email,
+      phones,
+      razaoSocial: data.razao_social || null,
+      nomeFantasia: data.nome_fantasia || null,
+      municipio: data.municipio || null,
+      uf: data.uf || null,
+      cnaePrincipal: data.cnae_principal || null,
+    };
+  } catch (err) {
+    logger.error(`OpenCNPJ error for ${cnpj}: ${err}`);
+    return { email: null, phones: [] };
+  }
+}
+
 async function upsertCache(cnpj: string, result: CnpjData, cached: typeof fornecedores.$inferSelect | undefined) {
   const now = new Date().toISOString();
   if (cached) {
@@ -311,7 +348,17 @@ export async function lookupCnpj(rawCnpj: string, skipSlowFallback = false): Pro
     }
   }
 
-  // 5. Last resort: ReceitaWS (often returns accounting firm emails)
+  // 5. OpenCNPJ: fast, high rate limit, good for phones
+  const openCnpjData = await openCnpjQueue.add(() => fetchOpenCnpjData(cnpj));
+  if (openCnpjData) {
+    if (openCnpjData.phones.length > 0) allSecondaryPhones.push(openCnpjData.phones);
+    if (!result.email && openCnpjData.email) {
+      result.email = openCnpjData.email;
+      result.emailSource = "opencnpj";
+    }
+  }
+
+  // 6. Last resort: ReceitaWS (often returns accounting firm emails)
   const receitaData = await receitawsQueue.add(() => fetchReceitaWsData(cnpj));
   if (receitaData) {
     if (receitaData.phones.length > 0) allSecondaryPhones.push(receitaData.phones);
@@ -321,10 +368,10 @@ export async function lookupCnpj(rawCnpj: string, skipSlowFallback = false): Pro
     }
   }
 
-  // 6. Merge phones from all sources
+  // 7. Merge phones from all sources
   result.telefones = mergePhones(result.telefones, ...allSecondaryPhones);
 
-  // 7. Classify email category using 3-layer detection
+  // 8. Classify email category using 3-layer detection
   result.emailCategory = detectEmailCategory(result.email, result.emailSource, primaryEmail);
 
   await upsertCache(cnpj, result, cached);
@@ -378,28 +425,49 @@ export async function lookupMultipleCnpjs(
 
   if (needsLookup.length === 0) return results;
 
-  // Step 2: Get company data from BrasilAPI for all (fast, parallel)
+  // Step 2: Get company data from BrasilAPI + OpenCNPJ in parallel (both fast)
   const brasilData = new Map<string, CnpjData>();
+  const openCnpjPhones = new Map<string, string[]>();
+  const openCnpjEmails = new Map<string, string>();
+
   await Promise.all(
-    needsLookup.map(async (cnpj) => {
-      const data = await brasilApiQueue.add(() => fetchBrasilApi(cnpj));
-      brasilData.set(cnpj, data ?? {
-        cnpj,
-        razaoSocial: null,
-        nomeFantasia: null,
-        email: null,
-        telefones: null,
-        logradouro: null,
-        municipio: null,
-        uf: null,
-        cep: null,
-        cnaePrincipal: null,
-        situacaoCadastral: null,
-        emailSource: "not_found" as const,
-        emailCategory: "empresa" as const,
-      });
-    })
+    needsLookup.flatMap((cnpj) => [
+      brasilApiQueue.add(() => fetchBrasilApi(cnpj)).then((data) => {
+        brasilData.set(cnpj, data ?? {
+          cnpj,
+          razaoSocial: null,
+          nomeFantasia: null,
+          email: null,
+          telefones: null,
+          logradouro: null,
+          municipio: null,
+          uf: null,
+          cep: null,
+          cnaePrincipal: null,
+          situacaoCadastral: null,
+          emailSource: "not_found" as const,
+          emailCategory: "empresa" as const,
+        });
+      }),
+      openCnpjQueue.add(() => fetchOpenCnpjData(cnpj)).then((data) => {
+        if (data) {
+          if (data.phones.length > 0) openCnpjPhones.set(cnpj, data.phones);
+          if (data.email) openCnpjEmails.set(cnpj, data.email);
+        }
+      }),
+    ])
   );
+
+  // Merge OpenCNPJ phones/emails into BrasilAPI results
+  for (const [cnpj, data] of brasilData) {
+    const extraPhones = openCnpjPhones.get(cnpj);
+    if (extraPhones) data.telefones = mergePhones(data.telefones, extraPhones);
+    const openEmail = openCnpjEmails.get(cnpj);
+    if (!data.email && openEmail) {
+      data.email = openEmail;
+      data.emailSource = "opencnpj";
+    }
+  }
 
   if (skipSlowFallback) {
     for (const [cnpj, data] of brasilData) {

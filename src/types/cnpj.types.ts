@@ -82,6 +82,23 @@ export interface ReceitaWsResponse {
   status: string;
 }
 
+// OpenCNPJ API response (api.opencnpj.org)
+export interface OpenCnpjResponse {
+  cnpj: string;
+  razao_social: string;
+  nome_fantasia: string;
+  situacao_cadastral: string;
+  cnae_principal: string;
+  logradouro: string;
+  uf: string;
+  municipio: string;
+  cep: string;
+  email: string | null;
+  telefones: Array<{ ddd: string; numero: string; is_fax: boolean }>;
+  capital_social: string;
+  porte_empresa: string;
+}
+
 // Normalized CNPJ data
 export interface CnpjData {
   cnpj: string;
@@ -95,6 +112,6 @@ export interface CnpjData {
   cep: string | null;
   cnaePrincipal: string | null;
   situacaoCadastral: string | null;
-  emailSource: "brasilapi" | "cnpja" | "receitaws" | "cnpjws" | "not_found" | "lookup_failed";
+  emailSource: "brasilapi" | "cnpja" | "receitaws" | "cnpjws" | "opencnpj" | "not_found" | "lookup_failed";
   emailCategory: "empresa" | "contabilidade";
 }

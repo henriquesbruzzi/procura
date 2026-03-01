@@ -1252,6 +1252,10 @@ function areaLabel(a) {
   var c = { licitatorio:'Licitatório', administrativo:'Administrativo', tributario:'Tributário', ambiental:'Ambiental' };
   return c[a] || a || '-';
 }
+function motivoLabel(m) {
+  var c = { vencedor_licitacao:'Vencedor de licitação', contrato_ativo:'Contrato ativo', fornecedor_cadastrado:'Fornecedor cadastrado', empresa_sancionada:'Empresa sancionada', empresa_punida:'Empresa punida', pad_servidor:'PAD de servidor', convenio_federal:'Convênio federal', parceria_contabilidade:'Parceria contabilidade', divida_ativa:'Dívida ativa', multa_ambiental:'Multa ambiental', outro:'Outro' };
+  return c[m] || m || '-';
+}
 async function toggleCategoria(cnpj) {
   try {
     const res = await fetch('/api/leads/' + cnpj + '/categoria', { method: 'PATCH' });
@@ -1391,8 +1395,8 @@ function renderLeads() {
       '<td style="font-size:11px;color:#94a3b8;max-width:180px" title="' + (l.cnaePrincipal||'').replace(/"/g,'') + '">' + cnaeShort + '</td>' +
       '<td style="font-size:12px">' + (l.municipio || '') + (l.uf ? '/' + l.uf : '') + '</td>' +
       '<td style="font-size:12px;color:#94a3b8">' + (l.telefones || '-') + '</td>' +
-      '<td><span class="badge ' + areaBadge(l.areaJuridica) + '" title="' + (l.fonteDescricao || '').replace(/"/g,'') + '">' + areaLabel(l.areaJuridica) + '</span></td>' +
-      '<td><span class="badge ' + fonteBadge(l.fonte || l.origem) + '">' + fonteLabel(l.fonte || l.origem || '-') + '</span></td>' +
+      '<td><span class="badge ' + areaBadge(l.areaJuridica) + '" title="' + motivoLabel(l.motivoLead) + '">' + areaLabel(l.areaJuridica) + '</span></td>' +
+      '<td style="font-size:11px;max-width:180px" title="' + fonteLabel(l.fonte || l.origem || '-') + '">' + (l.fonteDescricao || fonteLabel(l.fonte || l.origem || '-')) + '</td>' +
       '<td style="font-size:12px;color:#22c55e;font-weight:600">' + money(l.valorHomologado) + '</td>' +
       '<td>' + ((Number(l.emailSentCount)||0) > 0 ? '<span class="badge badge-green">' + l.emailSentCount + 'x</span>' : '<span class="badge badge-gray">N/A</span>') + '</td>' +
       '<td>' + ((Number(l.whatsappSentCount)||0) > 0 ? '<span class="badge" style="background:#052e16;color:#25d366">' + l.whatsappSentCount + 'x</span>' : (l.temWhatsapp ? '<span class="badge" style="background:#0a2a1a;color:#25d366">WA</span>' : '<span class="badge badge-gray">N/A</span>')) + '</td>' +
@@ -1444,9 +1448,9 @@ function copyLeadEmails() {
 function exportLeadsCSV() {
   const source = getFilteredLeads();
   if (source.length === 0) return showToast('Nenhum lead para exportar', true);
-  const header = 'CNPJ,Razao Social,Email,Telefone,Municipio,UF,Atividade (CNAE),Fonte,Categoria,Valor Homologado,Emails Enviados,WhatsApp Enviados,Tem WhatsApp';
+  const header = 'CNPJ,Razao Social,Email,Telefone,Municipio,UF,Atividade (CNAE),Area Juridica,Motivo Lead,Fonte Descricao,Fonte,Categoria,Valor Homologado,Emails Enviados,WhatsApp Enviados,Tem WhatsApp';
   const rows = source.map(l => {
-    return [l.cnpj, '"'+(l.razaoSocial||'')+'"', l.email||'', '"'+(l.telefones||'')+'"', '"'+(l.municipio||'')+'"', l.uf||'', '"'+(l.cnaePrincipal||'')+'"', l.fonte||l.origem||'', l.categoria||'', l.valorHomologado||'', l.emailSentCount||0, l.whatsappSentCount||0, l.temWhatsapp?'Sim':'Nao'].join(',');
+    return [l.cnpj, '"'+(l.razaoSocial||'')+'"', l.email||'', '"'+(l.telefones||'')+'"', '"'+(l.municipio||'')+'"', l.uf||'', '"'+(l.cnaePrincipal||'')+'"', l.areaJuridica||'', l.motivoLead||'', '"'+(l.fonteDescricao||'')+'"', l.fonte||l.origem||'', l.categoria||'', l.valorHomologado||'', l.emailSentCount||0, l.whatsappSentCount||0, l.temWhatsapp?'Sim':'Nao'].join(',');
   });
   const csv = header + '\\n' + rows.join('\\n');
   const blob = new Blob([csv], { type: 'text/csv' });
