@@ -20,8 +20,17 @@ interface SerpApiLocalResult {
   place_id?: string;
 }
 
+interface SerpApiPlaceResult {
+  title: string;
+  phone?: string;
+  address?: string;
+  website?: string;
+  place_id?: string;
+}
+
 interface SerpApiResponse {
   local_results?: SerpApiLocalResult[];
+  place_results?: SerpApiPlaceResult;
   search_metadata?: { status: string };
   error?: string;
 }
@@ -91,12 +100,20 @@ async function searchGoogleMaps(apiKey: string, query: string): Promise<string[]
     return [];
   }
 
+  const phones: string[] = [];
+
+  // When query is very specific, SerpAPI returns place_results (single match)
+  if (data.place_results?.phone) {
+    const normalized = normalizePhone(data.place_results.phone);
+    if (normalized) phones.push(normalized);
+    return phones;
+  }
+
+  // Otherwise, check local_results (multiple matches)
   if (!data.local_results || data.local_results.length === 0) return [];
 
   // Take phone from the first result (best match)
   const first = data.local_results[0];
-  const phones: string[] = [];
-
   if (first.phone) {
     const normalized = normalizePhone(first.phone);
     if (normalized) phones.push(normalized);
