@@ -17,6 +17,8 @@ const envSchema = z.object({
   WHATSAPP_ENABLED: z.coerce.boolean().default(false),
   // Portal da Transparência API (CEIS, CNEP, TransfereGov)
   PORTAL_TRANSPARENCIA_KEY: z.string().optional(),
+  // Google Places API (phone number lookup)
+  GOOGLE_PLACES_API_KEY: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);

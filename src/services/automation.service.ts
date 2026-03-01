@@ -16,6 +16,7 @@ import { logger } from "../utils/logger.js";
 import { mergePhones, isMobilePhone, parsePhoneList } from "../utils/phone.js";
 import { sendCampaignWhatsApp, isConnected, checkWhatsAppNumbersBatched } from "./whatsapp.service.js";
 import { lookupCnpj } from "./cnpj-lookup.service.js";
+import { findPhoneByGooglePlaces } from "./google-places.service.js";
 
 const activeTimers = new Map<number, NodeJS.Timeout>();
 
@@ -240,6 +241,22 @@ export async function executeJob(jobId: number): Promise<void> {
           if (data.nomeFantasia && !lead.nomeFantasia) updates.nomeFantasia = data.nomeFantasia;
           if (data.municipio && !lead.municipio) updates.municipio = data.municipio;
           if (data.uf && !lead.uf) updates.uf = data.uf;
+
+          // Google Places fallback: if CNPJ APIs didn't find a phone, try Google Maps
+          if (!updates.telefones && (data.razaoSocial || lead.razaoSocial)) {
+            const gpPhones = await findPhoneByGooglePlaces(
+              (data.razaoSocial || lead.razaoSocial)!,
+              data.municipio || lead.municipio,
+              data.uf || lead.uf
+            );
+            if (gpPhones.length > 0) {
+              const nPhones = mergePhones(null, gpPhones);
+              const hasMob = nPhones ? parsePhoneList(nPhones).some(isMobilePhone) : false;
+              updates.telefones = nPhones;
+              updates.temCelular = hasMob;
+              logger.info(`Google Places found phone for ${lead.cnpj}: ${nPhones}`);
+            }
+          }
 
           if (Object.keys(updates).length > 0) {
             await db.update(leads).set(updates).where(eq(leads.id, lead.id));
