@@ -19,6 +19,30 @@ import { lookupCnpj } from "./cnpj-lookup.service.js";
 
 const activeTimers = new Map<number, NodeJS.Timeout>();
 
+// Mapping from fonte → area_juridica + motivo_lead + fonte_descricao
+const LEAD_AREA_MAPPING: Record<string, { area: string; motivo: string; descricao: string }> = {
+  pncp: { area: "licitatorio", motivo: "vencedor_licitacao", descricao: "Empresa vencedora de licitação (PNCP)" },
+  pncp_contratos: { area: "licitatorio", motivo: "contrato_ativo", descricao: "Empresa com contrato público ativo (PNCP Contratos)" },
+  sicaf: { area: "licitatorio", motivo: "fornecedor_cadastrado", descricao: "Fornecedor cadastrado no SICAF" },
+  tce_sp: { area: "licitatorio", motivo: "vencedor_licitacao", descricao: "Despesa pública registrada (TCE-SP)" },
+  tce_rj: { area: "licitatorio", motivo: "vencedor_licitacao", descricao: "Contrato público registrado (TCE-RJ)" },
+  ceis: { area: "administrativo", motivo: "empresa_sancionada", descricao: "Empresa inidônea ou suspensa (CEIS)" },
+  cnep: { area: "administrativo", motivo: "empresa_punida", descricao: "Empresa punida (CNEP)" },
+  transparencia: { area: "licitatorio", motivo: "convenio_federal", descricao: "Convênio federal (Portal da Transparência)" },
+};
+
+function getLeadAreaMapping(fonte: string, categoria: string, tipoPessoa?: string): { area: string; motivo: string; descricao: string } {
+  if (categoria === "contabilidade") {
+    return { area: "licitatorio", motivo: "parceria_contabilidade", descricao: "Escritório de contabilidade (parceria)" };
+  }
+  if (fonte === "diario_oficial") {
+    return tipoPessoa === "PF"
+      ? { area: "administrativo", motivo: "pad_servidor", descricao: "Servidor em PAD (Diário Oficial)" }
+      : { area: "licitatorio", motivo: "vencedor_licitacao", descricao: "Empresa mencionada em diário oficial" };
+  }
+  return LEAD_AREA_MAPPING[fonte] || { area: "licitatorio", motivo: "outro", descricao: `Lead de fonte: ${fonte || "desconhecida"}` };
+}
+
 export async function startAutomationScheduler(): Promise<void> {
   const jobs = await db
     .select()
@@ -577,6 +601,9 @@ export async function executeJob(jobId: number): Promise<void> {
           ? parsePhoneList(normalizedPhones).some(isMobilePhone)
           : false;
 
+        // Determine legal area mapping
+        const areaMapping = getLeadAreaMapping(activeFonte, categoria, r.tipoPessoa);
+
         await db.insert(leads).values({
           cnpj,
           tipoPessoa: r.tipoPessoa || "PJ",
@@ -594,6 +621,9 @@ export async function executeJob(jobId: number): Promise<void> {
           valorHomologado: r.valorNum,
           categoria,
           temCelular: hasMobile,
+          areaJuridica: areaMapping.area,
+          motivoLead: areaMapping.motivo,
+          fonteDescricao: areaMapping.descricao,
         });
         leadsAdded++;
       }

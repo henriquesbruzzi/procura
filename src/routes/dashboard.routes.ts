@@ -418,6 +418,7 @@ const HTML = `<!DOCTYPE html>
         <button class="filter-btn" id="filter-com_whatsapp" onclick="filterLeads('com_whatsapp')" style="color:#25d366">Com WA</button>
         <button class="filter-btn" id="filter-wa_enviado" onclick="filterLeads('wa_enviado')" style="color:#25d366">WA Enviado</button>
         <span style="border-left:1px solid #334155;height:24px;margin:0 4px"></span>
+        <select id="leads-area-filter" onchange="leadPage=1;renderLeads()" style="padding:6px 10px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px"><option value="all">Todas Areas</option><option value="licitatorio">Licitatório</option><option value="administrativo">Administrativo</option><option value="tributario">Tributário</option><option value="ambiental">Ambiental</option></select>
         <input type="text" id="leads-cnae-filter" placeholder="Filtrar por CNAE / Atividade..." oninput="leadPage=1;renderLeads()" style="padding:6px 12px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px;width:200px">
         <select id="leads-uf-filter" onchange="leadPage=1;renderLeads()" style="padding:6px 10px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px"><option value="all">Todos UFs</option><option value="AC">AC</option><option value="AL">AL</option><option value="AM">AM</option><option value="AP">AP</option><option value="BA">BA</option><option value="CE">CE</option><option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option><option value="MA">MA</option><option value="MG">MG</option><option value="MS">MS</option><option value="MT">MT</option><option value="PA">PA</option><option value="PB">PB</option><option value="PE">PE</option><option value="PI">PI</option><option value="PR">PR</option><option value="RJ">RJ</option><option value="RN">RN</option><option value="RO">RO</option><option value="RR">RR</option><option value="RS">RS</option><option value="SC">SC</option><option value="SE">SE</option><option value="SP">SP</option><option value="TO">TO</option></select>
         <span style="border-left:1px solid #334155;height:24px;margin:0 4px"></span>
@@ -1243,6 +1244,14 @@ function fonteLabel(f) {
   if (f && f.startsWith('auto_job_')) return 'PNCP';
   return f || '-';
 }
+function areaBadge(a) {
+  var c = { licitatorio:'badge-blue', administrativo:'badge-yellow', tributario:'badge-red', ambiental:'badge-green' };
+  return c[a] || 'badge-gray';
+}
+function areaLabel(a) {
+  var c = { licitatorio:'Licitatório', administrativo:'Administrativo', tributario:'Tributário', ambiental:'Ambiental' };
+  return c[a] || a || '-';
+}
 async function toggleCategoria(cnpj) {
   try {
     const res = await fetch('/api/leads/' + cnpj + '/categoria', { method: 'PATCH' });
@@ -1291,13 +1300,15 @@ function renderLeads() {
   const whatsappSentTotal = leads.reduce(function(s,l){ return s + (Number(l.whatsappSentCount) || 0); }, 0);
   const leadsWhatsapped = leads.filter(function(l){ return (Number(l.whatsappSentCount) || 0) > 0; }).length;
   const leadsWithWhatsApp = leads.filter(function(l){ return l.temWhatsapp; }).length;
+  const licitatorio = leads.filter(l => l.areaJuridica === 'licitatorio').length;
+  const administrativo = leads.filter(l => l.areaJuridica === 'administrativo').length;
 
   statsEl.innerHTML =
     '<div class="stat"><div class="stat-value blue">' + leads.length + '</div><div class="stat-label">Total de leads</div></div>' +
     '<div class="stat"><div class="stat-value green">' + comEmail + '</div><div class="stat-label">Com email</div></div>' +
-    '<div class="stat"><div class="stat-value" style="color:#22c55e">' + empresas + '</div><div class="stat-label">Empresas</div></div>' +
+    '<div class="stat"><div class="stat-value" style="color:#3b82f6">' + licitatorio + '</div><div class="stat-label">Licitatório</div></div>' +
+    '<div class="stat"><div class="stat-value" style="color:#eab308">' + administrativo + '</div><div class="stat-label">Administrativo</div></div>' +
     '<div class="stat"><div class="stat-value" style="color:#f97316">' + contabs + '</div><div class="stat-label">Contabilidades</div></div>' +
-    '<div class="stat"><div class="stat-value" style="color:#8b5cf6">' + emailsSentTotal + '</div><div class="stat-label">Emails enviados</div></div>' +
     '<div class="stat"><div class="stat-value" style="color:#25d366">' + leadsWithWhatsApp + '</div><div class="stat-label">Tem WhatsApp</div></div>' +
     '<div class="stat"><div class="stat-value" style="color:#25d366">' + whatsappSentTotal + '</div><div class="stat-label">WA enviados</div></div>';
 
@@ -1308,6 +1319,8 @@ function renderLeads() {
   else if (leadFilter === 'com_whatsapp') { filtered = leads.filter(function(l){ return l.temWhatsapp; }); }
   else if (leadFilter === 'wa_enviado') { filtered = leads.filter(function(l){ return (Number(l.whatsappSentCount) || 0) > 0; }); }
   else { filtered = leads.filter(function(l){ return l.categoria === leadFilter; }); }
+  const areaFilter = document.getElementById('leads-area-filter')?.value || 'all';
+  if (areaFilter && areaFilter !== 'all') filtered = filtered.filter(l => l.areaJuridica === areaFilter);
   const cnaeFilter = (document.getElementById('leads-cnae-filter')?.value || '').toLowerCase().trim();
   if (cnaeFilter) filtered = filtered.filter(l => (l.cnaePrincipal || '').toLowerCase().includes(cnaeFilter));
   const ufFilter = document.getElementById('leads-uf-filter')?.value || 'all';
@@ -1329,6 +1342,7 @@ function renderLeads() {
     else if (sc === 'categoria') { va = a.categoria || ''; vb = b.categoria || ''; }
     else if (sc === 'cnae') { va = (a.cnaePrincipal || '').toLowerCase(); vb = (b.cnaePrincipal || '').toLowerCase(); }
     else if (sc === 'cidade') { va = ((a.municipio || '') + (a.uf || '')).toLowerCase(); vb = ((b.municipio || '') + (b.uf || '')).toLowerCase(); }
+    else if (sc === 'area') { va = (a.areaJuridica || '').toLowerCase(); vb = (b.areaJuridica || '').toLowerCase(); }
     else if (sc === 'fonte') { va = (a.fonte || a.origem || '').toLowerCase(); vb = (b.fonte || b.origem || '').toLowerCase(); }
     else if (sc === 'telefone') { va = (a.telefones || '').toLowerCase(); vb = (b.telefones || '').toLowerCase(); }
     else if (sc === 'enviado') { va = Number(a.emailSentCount) || 0; vb = Number(b.emailSentCount) || 0; return (va - vb) * sd; }
@@ -1360,6 +1374,7 @@ function renderLeads() {
     '<th style="cursor:pointer;user-select:none" onclick="sortLeads(\\'cnae\\')">Atividade (CNAE)' + sortIcon('cnae') + '</th>' +
     '<th style="cursor:pointer;user-select:none" onclick="sortLeads(\\'cidade\\')">Cidade/UF' + sortIcon('cidade') + '</th>' +
     '<th style="cursor:pointer;user-select:none" onclick="sortLeads(\\'telefone\\')">Telefone' + sortIcon('telefone') + '</th>' +
+    '<th style="cursor:pointer;user-select:none" onclick="sortLeads(\\'area\\')">Area' + sortIcon('area') + '</th>' +
     '<th style="cursor:pointer;user-select:none" onclick="sortLeads(\\'fonte\\')">Fonte' + sortIcon('fonte') + '</th>' +
     '<th style="cursor:pointer;user-select:none" onclick="sortLeads(\\'valor\\')">Valor' + sortIcon('valor') + '</th>' +
     '<th style="cursor:pointer;user-select:none" onclick="sortLeads(\\'enviado\\')">Email' + sortIcon('enviado') + '</th>' +
@@ -1376,6 +1391,7 @@ function renderLeads() {
       '<td style="font-size:11px;color:#94a3b8;max-width:180px" title="' + (l.cnaePrincipal||'').replace(/"/g,'') + '">' + cnaeShort + '</td>' +
       '<td style="font-size:12px">' + (l.municipio || '') + (l.uf ? '/' + l.uf : '') + '</td>' +
       '<td style="font-size:12px;color:#94a3b8">' + (l.telefones || '-') + '</td>' +
+      '<td><span class="badge ' + areaBadge(l.areaJuridica) + '" title="' + (l.fonteDescricao || '').replace(/"/g,'') + '">' + areaLabel(l.areaJuridica) + '</span></td>' +
       '<td><span class="badge ' + fonteBadge(l.fonte || l.origem) + '">' + fonteLabel(l.fonte || l.origem || '-') + '</span></td>' +
       '<td style="font-size:12px;color:#22c55e;font-weight:600">' + money(l.valorHomologado) + '</td>' +
       '<td>' + ((Number(l.emailSentCount)||0) > 0 ? '<span class="badge badge-green">' + l.emailSentCount + 'x</span>' : '<span class="badge badge-gray">N/A</span>') + '</td>' +

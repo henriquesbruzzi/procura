@@ -71,33 +71,33 @@ Alvaro Gonzaga`;
 
 // ============ TEMPLATE SELECTION ============
 
-/** Map lead to the correct template based on fonte and categoria */
+/** Map lead to the correct template based on areaJuridica, motivoLead and categoria */
 export function getTemplateForLead(
-  lead: { fonte: string | null; categoria: string; tipoPessoa: string | null },
+  lead: { fonte: string | null; categoria: string; tipoPessoa: string | null; areaJuridica?: string | null; motivoLead?: string | null },
   sequence: 1 | 2
 ): { name: string; body: string } {
   // Contabilidade always gets partnership template
-  if (lead.categoria === "contabilidade") {
+  if (lead.categoria === "contabilidade" || lead.motivoLead === "parceria_contabilidade") {
     return sequence === 1
       ? { name: "Contabilidade V1", body: CONTABILIDADE_V1 }
       : { name: "Contabilidade V2", body: CONTABILIDADE_V2 };
   }
 
-  // PF leads from PAD
-  if (lead.tipoPessoa === "PF" && lead.fonte === "diario_oficial") {
+  // PAD — servidor em processo administrativo disciplinar
+  if (lead.motivoLead === "pad_servidor" || (lead.tipoPessoa === "PF" && lead.fonte === "diario_oficial")) {
     return sequence === 1
       ? { name: "PAD V1", body: PAD_V1 }
       : { name: "PAD V2", body: PAD_V2 };
   }
 
-  // Empresas executadas/punidas
-  if (lead.fonte === "ceis" || lead.fonte === "cnep") {
+  // Empresas executadas/punidas/sancionadas
+  if (lead.motivoLead === "empresa_sancionada" || lead.motivoLead === "empresa_punida" || lead.fonte === "ceis" || lead.fonte === "cnep") {
     return sequence === 1
       ? { name: "Executadas V1", body: EXECUTADAS_V1 }
       : { name: "Executadas V2", body: EXECUTADAS_V2 };
   }
 
-  // Default: empresas que licitam
+  // Default: empresas que licitam (licitatorio area)
   return sequence === 1
     ? { name: "Licitantes V1", body: LICITANTES_V1 }
     : { name: "Licitantes V2", body: LICITANTES_V2 };
