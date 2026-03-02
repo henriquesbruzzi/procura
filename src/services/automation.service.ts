@@ -747,8 +747,10 @@ export async function executeJob(jobId: number): Promise<void> {
       if (job.targetCategory && job.targetCategory !== "all") {
         conditions.push(eq(leads.categoria, job.targetCategory));
       }
-      // Also exclude opted-out leads
-      conditions.push(sql`${leads.whatsappSentCount} >= 0`);
+      // Filter by area_juridica via searchUf field (reused for WA jobs)
+      if (job.searchUf) {
+        conditions.push(eq(leads.areaJuridica, job.searchUf));
+      }
 
       const wppCandidates = await db
         .select()
