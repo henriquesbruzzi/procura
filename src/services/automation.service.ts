@@ -779,6 +779,16 @@ export async function executeJob(jobId: number): Promise<void> {
 
       for (const lead of wppCandidates) {
         try {
+          // Re-check sent count to avoid race condition with parallel runs
+          const [fresh] = await db
+            .select({ whatsappSentCount: leads.whatsappSentCount })
+            .from(leads)
+            .where(eq(leads.id, lead.id));
+          if (fresh && fresh.whatsappSentCount > 0) {
+            logger.info(`WhatsApp skip ${lead.cnpj}: already sent (race condition avoided)`);
+            continue;
+          }
+
           const tpl = getTemplateForLead(lead, 1);
           const success = await sendCampaignWhatsApp(lead, tpl.name, tpl.body, 1);
           if (success) {
