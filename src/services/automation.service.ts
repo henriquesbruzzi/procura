@@ -18,6 +18,9 @@ import { sendCampaignWhatsApp, isConnected, checkWhatsAppNumbersBatched } from "
 import { lookupCnpj } from "./cnpj-lookup.service.js";
 import { findPhoneByGooglePlaces } from "./google-places.service.js";
 
+// Lock to prevent the same job from running in parallel
+const runningJobs = new Set<number>();
+
 const activeTimers = new Map<number, NodeJS.Timeout>();
 
 // Mapping from fonte → area_juridica + motivo_lead + fonte_descricao
@@ -162,6 +165,21 @@ export async function getSchedulerStatus() {
 }
 
 export async function executeJob(jobId: number): Promise<void> {
+  // Prevent parallel execution of the same job
+  if (runningJobs.has(jobId)) {
+    logger.warn(`Job ${jobId} already running, skipping duplicate execution`);
+    return;
+  }
+  runningJobs.add(jobId);
+
+  try {
+    await executeJobInner(jobId);
+  } finally {
+    runningJobs.delete(jobId);
+  }
+}
+
+async function executeJobInner(jobId: number): Promise<void> {
   const [job] = await db
     .select()
     .from(automationJobs)
