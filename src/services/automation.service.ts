@@ -441,11 +441,20 @@ export async function executeJob(jobId: number): Promise<void> {
     if (dataSource) {
       // Use modular data source adapter
       try {
+        // Calculate date window to avoid re-fetching same results
+        let dataInicial: string | undefined;
+        if (job.lastRunAt) {
+          dataInicial = job.lastRunAt.substring(0, 10).replace(/-/g, "");
+        }
+        const dataFinal = new Date().toISOString().substring(0, 10).replace(/-/g, "");
+
         const sourceResults = await dataSource.fetch({
           keyword: job.searchKeyword || undefined,
           uf: job.searchUf ?? undefined,
           quantity: job.searchQuantity,
           cnae: job.searchCnae ?? undefined,
+          dataInicial,
+          dataFinal,
         });
 
         activeFonte = dataSource.name;
