@@ -15,7 +15,7 @@ const DELAY_BETWEEN_SENDS_MS = 3000; // 3 seconds (WhatsApp is stricter)
 // ============ TEMPLATES (5 categorias) ============
 
 // 1.1 Empresas que licitam (pncp, pncp_contratos, sicaf, tce_sp, tce_rj)
-const LICITANTES_V1 = `Aqui é o Alvaro, sou advogado, e queria saber se já estão sendo atendidos. Nosso escritório atua com direito público: licitações, multas, processos administrativos, execução fiscal e toda essa área.`;
+const LICITANTES_V1 = `Aqui é o Alvaro, sou advogado, e queria saber se vocês já tem parceria com escritório de advocacia. Somos da área de licitações.`;
 
 const LICITANTES_V2 = `Olá! Entramos em contato há alguns dias sobre assessoria jurídica em licitações.
 
