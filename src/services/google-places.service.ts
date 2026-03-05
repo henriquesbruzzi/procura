@@ -4,48 +4,35 @@ import { logger } from "../utils/logger.js";
 import { normalizePhone } from "../utils/phone.js";
 
 /**
- * SerpAPI Google Maps — finds phone numbers for businesses
+ * Google Places API (New) — finds phone numbers for businesses
  * by searching Google Maps for their name + location.
  *
- * Free plan: 250 searches/month, 250 req/hour.
- * Each search returns up to 20 local results with phone numbers.
+ * Free tier: 5,000 requests/month, then $32/1,000.
  */
 
-interface SerpApiLocalResult {
-  title: string;
-  phone?: string;
-  address?: string;
-  rating?: number;
-  reviews?: number;
-  place_id?: string;
+interface PlaceResult {
+  nationalPhoneNumber?: string;
+  internationalPhoneNumber?: string;
+  displayName?: { text: string };
+  formattedAddress?: string;
 }
 
-interface SerpApiPlaceResult {
-  title: string;
-  phone?: string;
-  address?: string;
-  website?: string;
-  place_id?: string;
+interface PlacesResponse {
+  places?: PlaceResult[];
+  error?: { message: string; status: string };
 }
 
-interface SerpApiResponse {
-  local_results?: SerpApiLocalResult[];
-  place_results?: SerpApiPlaceResult;
-  search_metadata?: { status: string };
-  error?: string;
-}
-
-// Rate limit: conservative — 1 req/s to stay within free tier
-const serpQueue = new PQueue({
+// Rate limit: 1 req/s to be safe
+const placesQueue = new PQueue({
   concurrency: 1,
   intervalCap: 1,
-  interval: 1200,
+  interval: 1000,
 });
 
-const API_URL = "https://serpapi.com/search.json";
+const API_URL = "https://places.googleapis.com/v1/places:searchText";
 
 /**
- * Search Google Maps via SerpAPI for a business and return its phone number(s).
+ * Search Google Places for a business and return its phone number(s).
  * Uses razaoSocial + municipio + UF to build the query.
  *
  * Returns normalized E.164 phone strings, or empty array if not found.
@@ -55,75 +42,70 @@ export async function findPhoneByGooglePlaces(
   municipio?: string | null,
   uf?: string | null
 ): Promise<string[]> {
-  const apiKey = env.SERPAPI_KEY;
+  const apiKey = env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) return [];
 
-  // Build search query: "Empresa XYZ São Paulo SP"
   let query = razaoSocial;
   if (municipio) query += ` ${municipio}`;
   if (uf) query += ` ${uf}`;
 
   try {
-    const result = await serpQueue.add(() =>
-      searchGoogleMaps(apiKey, query)
+    const result = await placesQueue.add(() =>
+      searchPlaces(apiKey, query)
     );
     return result ?? [];
   } catch (err: any) {
-    logger.error(`SerpAPI error for "${razaoSocial}": ${err.message}`);
+    logger.error(`Google Places error for "${razaoSocial}": ${err.message}`);
     return [];
   }
 }
 
-async function searchGoogleMaps(apiKey: string, query: string): Promise<string[]> {
-  const params = new URLSearchParams({
-    engine: "google_maps",
-    q: query,
-    type: "search",
-    hl: "pt-br",
-    gl: "br",
-    api_key: apiKey,
-  });
-
-  const res = await fetch(`${API_URL}?${params}`, {
+async function searchPlaces(apiKey: string, query: string): Promise<string[]> {
+  const res = await fetch(API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask": "places.nationalPhoneNumber,places.internationalPhoneNumber,places.displayName",
+    },
+    body: JSON.stringify({
+      textQuery: query,
+      languageCode: "pt-BR",
+      maxResultCount: 3,
+    }),
     signal: AbortSignal.timeout(15000),
   });
 
   if (!res.ok) {
-    logger.warn(`SerpAPI ${res.status}: ${await res.text().catch(() => "")}`);
+    logger.warn(`Google Places ${res.status}: ${await res.text().catch(() => "")}`);
     return [];
   }
 
-  const data = (await res.json()) as SerpApiResponse;
+  const data = (await res.json()) as PlacesResponse;
 
   if (data.error) {
-    logger.warn(`SerpAPI error: ${data.error}`);
+    logger.warn(`Google Places error: ${data.error.message}`);
     return [];
   }
+
+  if (!data.places || data.places.length === 0) return [];
 
   const phones: string[] = [];
 
-  // When query is very specific, SerpAPI returns place_results (single match)
-  if (data.place_results?.phone) {
-    const normalized = normalizePhone(data.place_results.phone);
-    if (normalized) phones.push(normalized);
-    return phones;
-  }
-
-  // Otherwise, check local_results (multiple matches)
-  if (!data.local_results || data.local_results.length === 0) return [];
-
-  // Take phone from the first result (best match)
-  const first = data.local_results[0];
-  if (first.phone) {
-    const normalized = normalizePhone(first.phone);
+  // Take phone from first result (best match)
+  const first = data.places[0];
+  const phone = first.internationalPhoneNumber || first.nationalPhoneNumber;
+  if (phone) {
+    const normalized = normalizePhone(phone);
     if (normalized) phones.push(normalized);
   }
 
-  // Also check 2nd result in case the 1st doesn't have a phone
-  if (phones.length === 0 && data.local_results.length > 1) {
-    const second = data.local_results[1];
-    if (second.phone) {
-      const normalized = normalizePhone(second.phone);
+  // Fallback to 2nd result if first has no phone
+  if (phones.length === 0 && data.places.length > 1) {
+    const second = data.places[1];
+    const phone2 = second.internationalPhoneNumber || second.nationalPhoneNumber;
+    if (phone2) {
+      const normalized = normalizePhone(phone2);
       if (normalized) phones.push(normalized);
     }
   }
@@ -132,10 +114,8 @@ async function searchGoogleMaps(apiKey: string, query: string): Promise<string[]
 }
 
 /**
- * Batch lookup phones for multiple businesses via SerpAPI Google Maps.
+ * Batch lookup phones for multiple businesses via Google Places.
  * Returns a Map of CNPJ → phone numbers found.
- *
- * Note: Free plan has 250 searches/month — use wisely.
  */
 export async function findPhonesByGooglePlacesBatch(
   businesses: Array<{
@@ -147,15 +127,14 @@ export async function findPhonesByGooglePlacesBatch(
 ): Promise<Map<string, string[]>> {
   const results = new Map<string, string[]>();
 
-  if (!env.SERPAPI_KEY) {
-    logger.warn("SerpAPI key not configured, skipping Google Maps lookup");
+  if (!env.GOOGLE_PLACES_API_KEY) {
+    logger.warn("Google Places API key not configured, skipping phone lookup");
     return results;
   }
 
-  // Filter out businesses without razaoSocial (can't search without a name)
   const searchable = businesses.filter((b) => b.razaoSocial);
 
-  logger.info(`SerpAPI Google Maps: searching ${searchable.length} businesses`);
+  logger.info(`Google Places: searching ${searchable.length} businesses`);
 
   let found = 0;
   for (const biz of searchable) {
@@ -171,6 +150,6 @@ export async function findPhonesByGooglePlacesBatch(
     }
   }
 
-  logger.info(`SerpAPI Google Maps: found phones for ${found}/${searchable.length} businesses`);
+  logger.info(`Google Places: found phones for ${found}/${searchable.length} businesses`);
   return results;
 }
