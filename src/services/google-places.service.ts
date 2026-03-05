@@ -1,4 +1,6 @@
 import PQueue from "p-queue";
+import { sql } from "drizzle-orm";
+import { db } from "../config/database.js";
 import { env } from "../config/env.js";
 import { logger } from "../utils/logger.js";
 import { normalizePhone } from "../utils/phone.js";
@@ -7,8 +9,11 @@ import { normalizePhone } from "../utils/phone.js";
  * Google Places API (New) — finds phone numbers for businesses
  * by searching Google Maps for their name + location.
  *
- * Free tier: 5,000 requests/month, then $32/1,000.
+ * Free tier: 5,000 requests/month. Hard limit set to 4,500 to stay safe.
+ * Counter persisted in DB to survive deploys.
  */
+
+const MONTHLY_LIMIT = 4500;
 
 interface PlaceResult {
   nationalPhoneNumber?: string;
@@ -22,7 +27,7 @@ interface PlacesResponse {
   error?: { message: string; status: string };
 }
 
-// Rate limit: 1 req/s to be safe
+// Rate limit: 1 req/s
 const placesQueue = new PQueue({
   concurrency: 1,
   intervalCap: 1,
@@ -31,11 +36,53 @@ const placesQueue = new PQueue({
 
 const API_URL = "https://places.googleapis.com/v1/places:searchText";
 
+// Persistent counter via DB
+async function getMonthlyUsage(): Promise<number> {
+  const month = new Date().toISOString().slice(0, 7); // "2026-03"
+  const key = `google_places_usage_${month}`;
+  try {
+    const r = await db.execute(sql`
+      SELECT valor FROM config_kv WHERE chave = ${key}
+    `);
+    return Number((r.rows[0] as any)?.valor ?? 0);
+  } catch {
+    // Table might not exist yet
+    return 0;
+  }
+}
+
+async function incrementUsage(): Promise<void> {
+  const month = new Date().toISOString().slice(0, 7);
+  const key = `google_places_usage_${month}`;
+  try {
+    await db.execute(sql`
+      INSERT INTO config_kv (chave, valor) VALUES (${key}, '1')
+      ON CONFLICT (chave) DO UPDATE SET valor = (COALESCE(config_kv.valor::int, 0) + 1)::text
+    `);
+  } catch {
+    // Ignore — counter is best-effort
+  }
+}
+
+// Ensure config_kv table exists
+let tableChecked = false;
+async function ensureTable(): Promise<void> {
+  if (tableChecked) return;
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS config_kv (
+        chave TEXT PRIMARY KEY,
+        valor TEXT
+      )
+    `);
+    tableChecked = true;
+  } catch {
+    tableChecked = true;
+  }
+}
+
 /**
  * Search Google Places for a business and return its phone number(s).
- * Uses razaoSocial + municipio + UF to build the query.
- *
- * Returns normalized E.164 phone strings, or empty array if not found.
  */
 export async function findPhoneByGooglePlaces(
   razaoSocial: string,
@@ -45,6 +92,15 @@ export async function findPhoneByGooglePlaces(
   const apiKey = env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) return [];
 
+  await ensureTable();
+
+  // Check monthly limit
+  const usage = await getMonthlyUsage();
+  if (usage >= MONTHLY_LIMIT) {
+    logger.warn(`Google Places: monthly limit reached (${usage}/${MONTHLY_LIMIT}), skipping`);
+    return [];
+  }
+
   let query = razaoSocial;
   if (municipio) query += ` ${municipio}`;
   if (uf) query += ` ${uf}`;
@@ -53,6 +109,7 @@ export async function findPhoneByGooglePlaces(
     const result = await placesQueue.add(() =>
       searchPlaces(apiKey, query)
     );
+    await incrementUsage();
     return result ?? [];
   } catch (err: any) {
     logger.error(`Google Places error for "${razaoSocial}": ${err.message}`);
@@ -92,7 +149,6 @@ async function searchPlaces(apiKey: string, query: string): Promise<string[]> {
 
   const phones: string[] = [];
 
-  // Take phone from first result (best match)
   const first = data.places[0];
   const phone = first.internationalPhoneNumber || first.nationalPhoneNumber;
   if (phone) {
@@ -100,7 +156,6 @@ async function searchPlaces(apiKey: string, query: string): Promise<string[]> {
     if (normalized) phones.push(normalized);
   }
 
-  // Fallback to 2nd result if first has no phone
   if (phones.length === 0 && data.places.length > 1) {
     const second = data.places[1];
     const phone2 = second.internationalPhoneNumber || second.nationalPhoneNumber;
@@ -115,7 +170,6 @@ async function searchPlaces(apiKey: string, query: string): Promise<string[]> {
 
 /**
  * Batch lookup phones for multiple businesses via Google Places.
- * Returns a Map of CNPJ → phone numbers found.
  */
 export async function findPhonesByGooglePlacesBatch(
   businesses: Array<{
@@ -133,7 +187,6 @@ export async function findPhonesByGooglePlacesBatch(
   }
 
   const searchable = businesses.filter((b) => b.razaoSocial);
-
   logger.info(`Google Places: searching ${searchable.length} businesses`);
 
   let found = 0;
