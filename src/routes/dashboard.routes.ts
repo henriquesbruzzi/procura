@@ -1303,7 +1303,7 @@ function extractLeadWhatsAppPhone(lead) {
   if (!rawPhones.trim()) return null;
 
   const parts = rawPhones
-    .split(/[\n,;|/]+/)
+    .split(/[,;\n|]+/)
     .map(p => p.trim())
     .filter(Boolean);
 
