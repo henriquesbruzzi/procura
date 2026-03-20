@@ -1290,40 +1290,22 @@ function sortLeads(col) {
 }
 function leadsGoPage(p) { leadPage = p; renderLeads(); }
 
-function normalizeWhatsAppPhone(raw) {
-  const digits = String(raw || '').replace(/\D/g, '');
-  if (!digits) return null;
-  if (digits.startsWith('55') && digits.length >= 12) return digits;
-  if (digits.length === 10 || digits.length === 11) return '55' + digits;
-  return digits.length >= 12 ? digits : null;
-}
-
-function extractLeadWhatsAppPhone(lead) {
-  const rawPhones = String((lead && lead.telefones) || '');
-  if (!rawPhones.trim()) return null;
-
-  const parts = rawPhones
-    .split(/[,;\n|]+/)
-    .map(p => p.trim())
-    .filter(Boolean);
-
-  for (const p of parts) {
-    const normalized = normalizeWhatsAppPhone(p);
-    if (normalized) return normalized;
+function getLeadPhoneForWhatsApp(lead) {
+  if (!lead || !lead.telefones) return null;
+  var phones = lead.telefones.toString().split(/[,;|]+/);
+  for (var i = 0; i < phones.length; i++) {
+    var p = phones[i].replace(/\D/g, '');
+    if (p.length >= 10) return p.length === 10 || p.length === 11 ? '55' + p : p;
   }
-
-  return normalizeWhatsAppPhone(rawPhones);
+  return null;
 }
 
-function openLeadWhatsAppByCnpj(cnpj) {
-  const lead = leads.find(l => String(l.cnpj) === String(cnpj));
+function openWhatsAppForLead(cnpj) {
+  var lead = leads.find(function(l) { return l.cnpj === cnpj; });
   if (!lead) return showToast('Lead nao encontrado', true);
-
-  const phone = extractLeadWhatsAppPhone(lead);
-  if (!phone) return showToast('Lead sem telefone valido para WhatsApp', true);
-
-  const url = 'https://wa.me/' + phone + '?text=' + encodeURIComponent('Ola');
-  window.open(url, '_blank', 'noopener,noreferrer');
+  var phone = getLeadPhoneForWhatsApp(lead);
+  if (!phone) return showToast('Lead sem telefone valido', true);
+  window.open('https://wa.me/' + phone + '?text=' + encodeURIComponent('Ola'), '_blank');
 }
 
 function renderLeads() {
@@ -1425,7 +1407,6 @@ function renderLeads() {
 
   pageItems.forEach(l => {
     const cnaeShort = (l.cnaePrincipal || '-').length > 40 ? (l.cnaePrincipal || '').substring(0,37) + '...' : (l.cnaePrincipal || '-');
-    const cnpjSafe = String(l.cnpj || '').replace(/'/g, '');
     html += '<tr>' +
       '<td><div style="font-weight:600;font-size:12px">' + (l.razaoSocial || 'Sem nome') + '</div><div style="color:#475569;font-size:11px">' + l.cnpj + '</div></td>' +
       '<td>' + (l.email ? '<a class="email-link" href="mailto:' + l.email + '">' + l.email + '</a>' : '<span class="badge badge-red">Sem email</span>') + '</td>' +
@@ -1438,7 +1419,7 @@ function renderLeads() {
       '<td style="font-size:12px;color:#22c55e;font-weight:600">' + money(l.valorHomologado) + '</td>' +
       '<td>' + ((Number(l.emailSentCount)||0) > 0 ? '<span class="badge badge-green">' + l.emailSentCount + 'x</span>' : '<span class="badge badge-gray">N/A</span>') + '</td>' +
       '<td>' + ((Number(l.whatsappSentCount)||0) > 0 ? '<span class="badge" style="background:#052e16;color:#25d366">' + l.whatsappSentCount + 'x</span>' : (l.temWhatsapp ? '<span class="badge" style="background:#0a2a1a;color:#25d366">WA</span>' : '<span class="badge badge-gray">N/A</span>')) + '</td>' +
-        '<td><button class="btn btn-xs" style="background:#25d366;color:#fff" onclick="openLeadWhatsAppByCnpj(\\'' + cnpjSafe + '\\');event.stopPropagation()">Enviar</button></td>' +
+      '<td><button class="btn btn-xs" style="background:#25d366;color:#fff" onclick="openWhatsAppForLead(\\''+l.cnpj+'\\')">Enviar</button></td>' +
       '<td><button class="btn btn-xs btn-red" onclick="removeLead(\\''+l.cnpj+'\\')">X</button></td>' +
       '</tr>';
   });
