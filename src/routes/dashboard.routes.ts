@@ -1401,7 +1401,6 @@ function renderLeads() {
     '<th style="cursor:pointer;user-select:none" onclick="sortLeads(\\'valor\\')">Valor' + sortIcon('valor') + '</th>' +
     '<th style="cursor:pointer;user-select:none" onclick="sortLeads(\\'enviado\\')">Email' + sortIcon('enviado') + '</th>' +
     '<th style="cursor:pointer;user-select:none" onclick="sortLeads(\\'whatsapp\\')">WhatsApp' + sortIcon('whatsapp') + '</th>' +
-    '<th>WA Manual</th>' +
     '<th></th>' +
     '</tr></thead><tbody>';
 
@@ -1418,8 +1417,14 @@ function renderLeads() {
       '<td style="font-size:11px;max-width:180px" title="' + fonteLabel(l.fonte || l.origem || '-') + '">' + (l.fonteDescricao || fonteLabel(l.fonte || l.origem || '-')) + '</td>' +
       '<td style="font-size:12px;color:#22c55e;font-weight:600">' + money(l.valorHomologado) + '</td>' +
       '<td>' + ((Number(l.emailSentCount)||0) > 0 ? '<span class="badge badge-green">' + l.emailSentCount + 'x</span>' : '<span class="badge badge-gray">N/A</span>') + '</td>' +
-      '<td>' + ((Number(l.whatsappSentCount)||0) > 0 ? '<span class="badge" style="background:#052e16;color:#25d366">' + l.whatsappSentCount + 'x</span>' : (l.temWhatsapp ? '<span class="badge" style="background:#0a2a1a;color:#25d366">WA</span>' : '<span class="badge badge-gray">N/A</span>')) + '</td>' +
-      '<td><button class="btn btn-xs" style="background:#25d366;color:#fff" onclick="openWhatsAppForLead(\\''+l.cnpj+'\\')">Enviar</button></td>' +
+      '<td>' +
+        ((Number(l.whatsappSentCount)||0) > 0
+          ? '<span class="badge" style="background:#052e16;color:#25d366">' + l.whatsappSentCount + 'x</span>'
+          : (l.temWhatsapp
+              ? '<span class="badge" style="background:#0a2a1a;color:#25d366">WA</span>'
+              : '<span class="badge badge-gray">N/A</span>')) +
+        (l.temWhatsapp ? ' <button class="btn btn-xs" style="background:#25d366;color:#fff;padding:3px 8px" onclick="openWhatsAppForLead(\\''+l.cnpj+'\\')">Enviar</button>' : '') +
+      '</td>' +
       '<td><button class="btn btn-xs btn-red" onclick="removeLead(\\''+l.cnpj+'\\')">X</button></td>' +
       '</tr>';
   });
