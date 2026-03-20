@@ -1305,7 +1305,10 @@ function openWhatsAppForLead(cnpj) {
   if (!lead) return showToast('Lead nao encontrado', true);
   var phone = getLeadPhoneForWhatsApp(lead);
   if (!phone) return showToast('Lead sem telefone valido', true);
-  window.open('https://wa.me/' + phone + '?text=' + encodeURIComponent('Ola'), '_blank');
+  var msgEmpresa = 'Aqui é o Alvaro, sou advogado, e queria saber se já estão sendo atendidos. Nosso escritório atua com direito público: licitações, multas, processos administrativos, execução fiscal e toda essa área.';
+  var msgContabilidade = 'Aqui é o Alvaro, sou advogado, e queria saber se vocês já tem parceria com escritório de advocacia.';
+  var msg = lead.categoria === 'contabilidade' ? msgContabilidade : msgEmpresa;
+  window.open('https://wa.me/' + phone + '?text=' + encodeURIComponent(msg), '_blank');
 }
 
 function renderLeads() {
