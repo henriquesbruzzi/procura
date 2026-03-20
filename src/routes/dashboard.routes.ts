@@ -1300,34 +1300,15 @@ function sortLeads(col) {
 }
 function leadsGoPage(p) { leadPage = p; renderLeads(); }
 
-function normalizeWhatsAppPhone(raw) {
-  const digits = String(raw || '').replace(/\D/g, '');
-  if (!digits) return null;
-  if (digits.startsWith('55') && digits.length >= 12) return digits;
-  if (digits.length === 10 || digits.length === 11) return '55' + digits;
-  return digits.length >= 12 ? digits : null;
-}
-
-function extractLeadWhatsAppPhone(lead) {
-  const rawPhones = String((lead && lead.telefones) || '');
-  if (!rawPhones.trim()) return null;
-
-  const parts = rawPhones
-    .split(/[,;\n|]+/)
-    .map(p => p.trim())
-    .filter(Boolean);
-
-  for (const p of parts) {
-    const normalized = normalizeWhatsAppPhone(p);
-    if (normalized) return normalized;
+function getLeadPhoneForWhatsApp(lead) {
+  if (!lead || !lead.telefones) return null;
+  var phones = lead.telefones.toString().split(/[,;|]+/);
+  for (var i = 0; i < phones.length; i++) {
+    var p = phones[i].replace(/\D/g, '');
+    if (p.length >= 10) return p.length === 10 || p.length === 11 ? '55' + p : p;
   }
   return null;
 }
-
-function getLeadPhoneForWhatsApp(lead) {
-  return extractLeadWhatsAppPhone(lead);
-}
-
 function openWhatsAppForLead(cnpj) {
   var lead = leads.find(function(l) { return l.cnpj === cnpj; });
   if (!lead) return showToast('Lead nao encontrado', true);
