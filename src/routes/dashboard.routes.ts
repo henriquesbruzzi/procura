@@ -2733,7 +2733,7 @@ async function runCampaignNow() {
 
 // ============ AGENDA ============
 let agendaPage = 1;
-const AGENDA_TEMPLATE = 'Aqui \u00e9 o Alvaro, sou advogado, e queria saber se j\u00e1 est\u00e3o sendo atendidos. Nosso escrit\u00f3rio atua com direito p\u00fablico: licita\u00e7\u00f5es, multas, processos administrativos, execu\u00e7\u00e3o fiscal e toda essa \u00e1rea.';
+const AGENDA_TEMPLATE = 'Aqui é o Alvaro, sou advogado, e queria saber se já estão sendo atendidos. Nosso escritório atua com direito público: licitações, multas, processos administrativos, execução fiscal e toda essa área.';
 
 async function loadAgenda(page) {
   agendaPage = page || 1;
@@ -2769,7 +2769,7 @@ async function loadAgenda(page) {
       html += '<td><span class="badge badge-blue">' + fonteLabel + '</span></td>';
       html += '<td><span class="badge badge-yellow">' + areaLabel + '</span></td>';
       html += '<td>' + (l.uf || '-') + '</td>';
-      html += '<td><button class="btn btn-green btn-sm" onclick="sendAgendaWhatsApp(' + l.id + ',\'' + firstPhone.replace(/'/g, "\\\\'") + '\')" style="white-space:nowrap">&#128172; Enviar</button></td>';
+      html += '<td><button class="btn btn-green btn-sm" onclick="sendAgendaWhatsApp(' + l.id + ',&quot;' + firstPhone + '&quot;)" style="white-space:nowrap">&#128172; Enviar</button></td>';
       html += '</tr>';
     }
     html += '</tbody></table></div>';
