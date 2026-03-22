@@ -338,6 +338,7 @@ const HTML = `<!DOCTYPE html>
         <div class="sidebar-section">Comunicacao</div>
         <button class="nav-item" data-tab="email" data-active-class="active-purple" onclick="switchTab('email')"><span class="nav-icon">&#9993;</span> Email</button>
         <button class="nav-item" data-tab="campanha" data-active-class="active-green" onclick="switchTab('campanha')"><span class="nav-icon">&#128640;</span> Campanha</button>
+        <button class="nav-item" data-tab="agenda" data-active-class="active-green" onclick="switchTab('agenda')"><span class="nav-icon">&#128203;</span> Agenda</button>
         <button class="nav-item" data-tab="whatsapp" data-active-class="active-green" onclick="switchTab('whatsapp')"><span class="nav-icon">&#128172;</span> WhatsApp</button>
         <button class="nav-item" data-tab="automacao" data-active-class="active-amber" onclick="switchTab('automacao')"><span class="nav-icon">&#9889;</span> Automacao</button>
 
@@ -713,6 +714,15 @@ const HTML = `<!DOCTYPE html>
           <div id="campaign-by-category"><div style="color:#64748b;font-size:13px;padding:8px">Carregando...</div></div>
         </div>
       </div>
+    </div>
+
+    <!-- ============ AGENDA ============ -->
+    <div class="panel" id="panel-agenda">
+      <div class="info-box" style="border-left-color:#25d366">
+        <strong>Agenda de Envio Manual:</strong> Leads com telefone que ainda nao receberam mensagem via WhatsApp. Clique em "Enviar" para abrir o WhatsApp Web com a mensagem pre-preenchida. O lead sera automaticamente removido da agenda apos o envio.
+      </div>
+      <div id="agenda-stats" class="stats"></div>
+      <div id="agenda-results"></div>
     </div>
 
     <!-- ============ WHATSAPP ============ -->
@@ -1565,6 +1575,7 @@ function switchTab(tabName) {
   if (tabName === 'campanha' && !campaignLoaded) { campaignLoaded = true; loadCampaign(); }
   if (tabName === 'whatsapp' && !waLoaded) { waLoaded = true; loadWhatsApp(); }
   if (tabName === 'automacao' && !autoLoaded) { autoLoaded = true; loadAutomacao(); }
+  if (tabName === 'agenda') loadAgenda(1);
 }
 
 function toggleSidebar() {
@@ -2718,6 +2729,90 @@ async function runCampaignNow() {
     showToast('Campanha iniciada! Atualize em alguns minutos para ver os resultados.');
     setTimeout(() => { campaignLoaded = false; loadCampaign(); }, 15000);
   } catch(e) { showToast('Erro: ' + e.message, true); }
+}
+
+// ============ AGENDA ============
+let agendaPage = 1;
+const AGENDA_TEMPLATE = 'Aqui \u00e9 o Alvaro, sou advogado, e queria saber se j\u00e1 est\u00e3o sendo atendidos. Nosso escrit\u00f3rio atua com direito p\u00fablico: licita\u00e7\u00f5es, multas, processos administrativos, execu\u00e7\u00e3o fiscal e toda essa \u00e1rea.';
+
+async function loadAgenda(page) {
+  agendaPage = page || 1;
+  const statsEl = document.getElementById('agenda-stats');
+  const resultsEl = document.getElementById('agenda-results');
+  try {
+    const res = await fetch('/api/agenda?pagina=' + agendaPage + '&tamanhoPagina=50');
+    const json = await res.json();
+    const { data, total, totalPages } = json;
+
+    statsEl.innerHTML =
+      '<div class="stat"><div class="stat-value" style="color:#25d366">' + total + '</div><div class="stat-label">Leads na agenda</div></div>';
+
+    if (data.length === 0) {
+      resultsEl.innerHTML = '<div class="results"><div class="empty">Nenhum lead pendente na agenda.</div></div>';
+      return;
+    }
+
+    let html = '<div class="results"><div class="results-header"><h3>Agenda (' + total + ' leads)</h3></div>';
+    html += '<div class="table-wrap"><table><thead><tr><th>Nome</th><th>Telefone</th><th>Fonte</th><th>\u00c1rea</th><th>UF</th><th>A\u00e7\u00e3o</th></tr></thead><tbody>';
+
+    for (let i = 0; i < data.length; i++) {
+      const l = data[i];
+      const nome = l.nomeFantasia || l.razaoSocial || '-';
+      const phones = (l.telefones || '').split(',').map(function(p){ return p.trim(); }).filter(Boolean);
+      const firstPhone = phones[0] || '';
+      const fonteLabel = l.fonte || '-';
+      const areaLabel = l.areaJuridica || '-';
+
+      html += '<tr id="agenda-row-' + l.id + '">';
+      html += '<td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + nome + '">' + nome + '</td>';
+      html += '<td style="font-family:monospace;font-size:12px">' + firstPhone + '</td>';
+      html += '<td><span class="badge badge-blue">' + fonteLabel + '</span></td>';
+      html += '<td><span class="badge badge-yellow">' + areaLabel + '</span></td>';
+      html += '<td>' + (l.uf || '-') + '</td>';
+      html += '<td><button class="btn btn-green btn-sm" onclick="sendAgendaWhatsApp(' + l.id + ',\'' + firstPhone.replace(/'/g, "\\\\'") + '\')" style="white-space:nowrap">&#128172; Enviar</button></td>';
+      html += '</tr>';
+    }
+    html += '</tbody></table></div>';
+
+    // Pagination
+    if (totalPages > 1) {
+      html += '<div style="padding:12px 20px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #334155">';
+      html += '<span style="color:#64748b;font-size:12px">P\u00e1gina ' + agendaPage + ' de ' + totalPages + '</span>';
+      html += '<div style="display:flex;gap:8px">';
+      if (agendaPage > 1) html += '<button class="btn btn-sm btn-primary" onclick="loadAgenda(' + (agendaPage - 1) + ')">Anterior</button>';
+      if (agendaPage < totalPages) html += '<button class="btn btn-sm btn-primary" onclick="loadAgenda(' + (agendaPage + 1) + ')">Pr\u00f3xima</button>';
+      html += '</div></div>';
+    }
+
+    html += '</div>';
+    resultsEl.innerHTML = html;
+  } catch(e) {
+    resultsEl.innerHTML = '<div class="results"><div class="empty">Erro ao carregar agenda.</div></div>';
+  }
+}
+
+async function sendAgendaWhatsApp(id, phone) {
+  // Clean phone for wa.me link (remove +, spaces, dashes)
+  const cleanPhone = phone.replace(/[^0-9]/g, '');
+  const url = 'https://wa.me/' + cleanPhone + '?text=' + encodeURIComponent(AGENDA_TEMPLATE);
+  window.open(url, '_blank');
+
+  // Mark as sent
+  try {
+    await fetch('/api/agenda/' + id + '/sent', { method: 'POST' });
+    // Remove row from table
+    const row = document.getElementById('agenda-row-' + id);
+    if (row) row.remove();
+    // Update stats count
+    const statsEl = document.getElementById('agenda-stats');
+    const match = statsEl.innerHTML.match(/stat-value[^>]*>(\d+)/);
+    if (match) {
+      const newCount = Math.max(0, parseInt(match[1]) - 1);
+      statsEl.innerHTML = '<div class="stat"><div class="stat-value" style="color:#25d366">' + newCount + '</div><div class="stat-label">Leads na agenda</div></div>';
+    }
+  } catch(e) {
+    console.error('Erro ao marcar como enviado:', e);
+  }
 }
 
 // ============ WHATSAPP ============

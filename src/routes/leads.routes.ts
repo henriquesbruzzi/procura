@@ -462,4 +462,66 @@ export async function leadsRoutes(app: FastifyInstance) {
   app.get("/api/leads/validate-whatsapp-progress", async () => {
     return { running: waValidationRunning, progress: waValidationProgress };
   });
+
+  // ============ AGENDA ============
+
+  // List leads for agenda (have phone, never sent WhatsApp)
+  app.get<{
+    Querystring: { pagina?: string; tamanhoPagina?: string };
+  }>("/api/agenda", async (request) => {
+    const page = request.query.pagina ? Number(request.query.pagina) : 1;
+    const pageSize = request.query.tamanhoPagina ? Number(request.query.tamanhoPagina) : 50;
+    const offset = (page - 1) * pageSize;
+
+    const where = and(
+      isNotNull(leads.telefones),
+      sql`${leads.telefones} != ''`,
+      eq(leads.whatsappSentCount, 0)
+    );
+
+    const [countResult] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(leads)
+      .where(where);
+
+    const total = Number(countResult.count);
+
+    const data = await db
+      .select({
+        id: leads.id,
+        razaoSocial: leads.razaoSocial,
+        nomeFantasia: leads.nomeFantasia,
+        telefones: leads.telefones,
+        fonte: leads.fonte,
+        areaJuridica: leads.areaJuridica,
+        uf: leads.uf,
+        municipio: leads.municipio,
+      })
+      .from(leads)
+      .where(where)
+      .orderBy(leads.id)
+      .limit(pageSize)
+      .offset(offset);
+
+    return {
+      data,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  });
+
+  // Mark lead as sent via agenda (WhatsApp Web)
+  app.post<{ Params: { id: string } }>("/api/agenda/:id/sent", async (request) => {
+    const id = Number(request.params.id);
+    await db
+      .update(leads)
+      .set({
+        whatsappSentCount: 1,
+        whatsappSentAt: new Date().toISOString(),
+      })
+      .where(eq(leads.id, id));
+    return { success: true };
+  });
 }

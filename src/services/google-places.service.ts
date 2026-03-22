@@ -82,6 +82,30 @@ async function ensureTable(): Promise<void> {
 }
 
 /**
+ * Extract significant words (4+ chars) from a business name, lowercased.
+ * Strips common suffixes like LTDA, EIRELI, ME, EPP, SA, S/A etc.
+ */
+function extractWords(name: string): string[] {
+  const stopWords = new Set(["ltda", "eireli", "me", "epp", "s.a", "s/a", "sa", "comercio", "servicos", "serviços", "comércio", "industria", "indústria", "empresa", "grupo"]);
+  return name
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .split(/[\s\-.,/&]+/)
+    .filter(w => w.length >= 4 && !stopWords.has(w));
+}
+
+/**
+ * Check if the Google Places result name is similar enough to the lead's razão social.
+ * Returns true if at least one significant word matches.
+ */
+function isNameMatch(leadName: string, placeName: string): boolean {
+  const leadWords = extractWords(leadName);
+  const placeWords = extractWords(placeName);
+  if (leadWords.length === 0 || placeWords.length === 0) return false;
+  return leadWords.some(lw => placeWords.some(pw => pw.includes(lw) || lw.includes(pw)));
+}
+
+/**
  * Search Google Places for a business and return its phone number(s).
  */
 export async function findPhoneByGooglePlaces(
@@ -107,7 +131,7 @@ export async function findPhoneByGooglePlaces(
 
   try {
     const result = await placesQueue.add(() =>
-      searchPlaces(apiKey, query)
+      searchPlaces(apiKey, query, razaoSocial)
     );
     await incrementUsage();
     return result ?? [];
@@ -117,7 +141,7 @@ export async function findPhoneByGooglePlaces(
   }
 }
 
-async function searchPlaces(apiKey: string, query: string): Promise<string[]> {
+async function searchPlaces(apiKey: string, query: string, razaoSocial: string): Promise<string[]> {
   const res = await fetch(API_URL, {
     method: "POST",
     headers: {
@@ -147,25 +171,22 @@ async function searchPlaces(apiKey: string, query: string): Promise<string[]> {
 
   if (!data.places || data.places.length === 0) return [];
 
-  const phones: string[] = [];
+  // Try each result, but only accept if the name matches the lead
+  for (const place of data.places) {
+    const placeName = place.displayName?.text || "";
+    if (!isNameMatch(razaoSocial, placeName)) {
+      logger.debug(`Google Places: name mismatch "${razaoSocial}" vs "${placeName}", skipping`);
+      continue;
+    }
 
-  const first = data.places[0];
-  const phone = first.internationalPhoneNumber || first.nationalPhoneNumber;
-  if (phone) {
-    const normalized = normalizePhone(phone);
-    if (normalized) phones.push(normalized);
-  }
-
-  if (phones.length === 0 && data.places.length > 1) {
-    const second = data.places[1];
-    const phone2 = second.internationalPhoneNumber || second.nationalPhoneNumber;
-    if (phone2) {
-      const normalized = normalizePhone(phone2);
-      if (normalized) phones.push(normalized);
+    const phone = place.internationalPhoneNumber || place.nationalPhoneNumber;
+    if (phone) {
+      const normalized = normalizePhone(phone);
+      if (normalized) return [normalized];
     }
   }
 
-  return phones;
+  return [];
 }
 
 /**
