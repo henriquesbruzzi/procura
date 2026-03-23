@@ -13,7 +13,7 @@ const envSchema = z.object({
   EVOLUTION_API_URL: z.string().optional(),
   EVOLUTION_API_KEY: z.string().optional(),
   EVOLUTION_INSTANCE_NAME: z.string().default("procura"),
-  WHATSAPP_DAILY_LIMIT: z.coerce.number().default(50),
+  WHATSAPP_DAILY_LIMIT: z.coerce.number().default(40),
   WHATSAPP_ENABLED: z.coerce.boolean().default(false),
   // Portal da Transparência API (CEIS, CNEP, TransfereGov)
   PORTAL_TRANSPARENCIA_KEY: z.string().optional(),

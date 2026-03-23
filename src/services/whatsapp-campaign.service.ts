@@ -10,7 +10,21 @@ import { sendCampaignWhatsApp, isConnected } from "./whatsapp.service.js";
 const DAILY_LIMIT = () => env.WHATSAPP_DAILY_LIMIT;
 const EMPRESA_RATIO = 0.9;
 const REMARKETING_DELAY_DAYS = 7;
-const DELAY_BETWEEN_SENDS_MS = 3000; // 3 seconds (WhatsApp is stricter)
+const DELAY_BETWEEN_SENDS_MS = 10 * 60 * 1000; // 10 minutes between WhatsApp messages
+const BRT_OFFSET_HOURS = 3; // UTC-3
+
+function getBrtDate(date: Date = new Date()): Date {
+  return new Date(date.getTime() - BRT_OFFSET_HOURS * 60 * 60 * 1000);
+}
+
+function isAllowedWindowBRT(date: Date = new Date()): boolean {
+  const brt = getBrtDate(date);
+  const day = brt.getUTCDay();
+  const hour = brt.getUTCHours();
+  const isWeekday = day >= 1 && day <= 5;
+  const inBusinessHours = hour >= 8 && hour < 18;
+  return isWeekday && inBusinessHours;
+}
 
 // ============ TEMPLATES (5 categorias) ============
 
@@ -134,6 +148,11 @@ export async function runDailyWhatsAppCampaign(): Promise<WhatsAppCampaignResult
 }
 
 async function executeCampaign(): Promise<WhatsAppCampaignResult> {
+  if (!isAllowedWindowBRT()) {
+    logger.info("WhatsApp Campaign: Outside allowed window (Mon-Fri, 08:00-18:00 BRT). Skipping.");
+    return { sentToday: 0, v1Sent: 0, v2Sent: 0, v1Failed: 0, v2Failed: 0, skipped: true, error: "Outside allowed window" };
+  }
+
   // Check if WhatsApp is connected
   const connected = await isConnected();
   if (!connected) {
@@ -190,6 +209,10 @@ async function executeCampaign(): Promise<WhatsAppCampaignResult> {
 
   for (const lead of v2Candidates) {
     if (remainingBudget <= 0) break;
+    if (!isAllowedWindowBRT()) {
+      logger.info("WhatsApp Campaign: Allowed window ended during V2 flow. Stopping for now.");
+      break;
+    }
 
     try {
       const tpl = getTemplateForLead(lead, 2);
@@ -231,6 +254,10 @@ async function executeCampaign(): Promise<WhatsAppCampaignResult> {
 
     for (const lead of v1All) {
       if (remainingBudget <= 0) break;
+      if (!isAllowedWindowBRT()) {
+        logger.info("WhatsApp Campaign: Allowed window ended during V1 flow. Stopping for now.");
+        break;
+      }
       try {
         const tpl = getTemplateForLead(lead, 1);
         const success = await sendCampaignWhatsApp(lead, tpl.name, tpl.body, 1);
@@ -265,26 +292,37 @@ async function executeCampaign(): Promise<WhatsAppCampaignResult> {
 }
 
 // ============ SCHEDULER ============
-// Runs daily at 14:00 BRT (Brasília, UTC-3 = 17:00 UTC)
+// Runs on weekdays at 14:00 BRT (Brasilia, UTC-3 = 17:00 UTC)
 
 let campaignTimer: ReturnType<typeof setTimeout> | null = null;
 
-function msUntilNext2pmBRT(): number {
+function msUntilNext2pmBRTWeekday(): number {
   const now = new Date();
-  // Next 14:00 BRT = 17:00 UTC
   const target = new Date(now);
+
+  // 14:00 BRT = 17:00 UTC
   target.setUTCHours(17, 0, 0, 0);
+
   if (now.getTime() >= target.getTime()) {
     target.setUTCDate(target.getUTCDate() + 1);
   }
+
+  while (true) {
+    const targetBrtDay = getBrtDate(target).getUTCDay();
+    const isWeekday = targetBrtDay >= 1 && targetBrtDay <= 5;
+    if (isWeekday) break;
+    target.setUTCDate(target.getUTCDate() + 1);
+    target.setUTCHours(17, 0, 0, 0);
+  }
+
   return target.getTime() - now.getTime();
 }
 
 function scheduleNextRun(): void {
-  const ms = msUntilNext2pmBRT();
+  const ms = msUntilNext2pmBRTWeekday();
   const hours = Math.floor(ms / 3600000);
   const mins = Math.floor((ms % 3600000) / 60000);
-  logger.info(`Next WhatsApp campaign scheduled in ${hours}h ${mins}m (14:00 BRT)`);
+  logger.info(`Next WhatsApp campaign scheduled in ${hours}h ${mins}m (weekday 14:00 BRT)`);
 
   campaignTimer = setTimeout(async () => {
     try {
@@ -298,7 +336,7 @@ function scheduleNextRun(): void {
 
 export function startDailyWhatsAppScheduler(): void {
   scheduleNextRun();
-  logger.info("Daily WhatsApp campaign scheduler started (runs at 14:00 BRT)");
+  logger.info("Daily WhatsApp campaign scheduler started (Mon-Fri, 14:00 BRT; send window 08:00-18:00 BRT)");
 }
 
 export function stopDailyWhatsAppScheduler(): void {
