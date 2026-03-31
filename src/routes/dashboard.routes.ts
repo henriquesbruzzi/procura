@@ -329,12 +329,6 @@ const HTML = `<!DOCTYPE html>
         <button class="nav-item active-green" data-tab="emails" data-active-class="active-green" onclick="switchTab('emails')"><span class="nav-icon">&#128269;</span> Busca de Emails</button>
         <button class="nav-item" data-tab="leads" data-active-class="active-green" onclick="switchTab('leads')"><span class="nav-icon">&#128101;</span> Meus Leads <span class="nav-badge" id="leads-count">0</span></button>
 
-        <div class="sidebar-section">Dados PNCP</div>
-        <button class="nav-item" data-tab="licitacoes" data-active-class="active" onclick="switchTab('licitacoes')"><span class="nav-icon">&#128203;</span> Licitacoes</button>
-        <button class="nav-item" data-tab="fornecedores" data-active-class="active" onclick="switchTab('fornecedores')"><span class="nav-icon">&#127970;</span> Fornecedores</button>
-        <button class="nav-item" data-tab="contratos" data-active-class="active" onclick="switchTab('contratos')"><span class="nav-icon">&#128196;</span> Contratos</button>
-        <button class="nav-item" data-tab="cnpj" data-active-class="active" onclick="switchTab('cnpj')"><span class="nav-icon">&#128270;</span> Consulta CNPJ</button>
-
         <div class="sidebar-section">Comunicacao</div>
         <button class="nav-item" data-tab="email" data-active-class="active-purple" onclick="switchTab('email')"><span class="nav-icon">&#9993;</span> Email</button>
         <button class="nav-item" data-tab="campanha" data-active-class="active-green" onclick="switchTab('campanha')"><span class="nav-icon">&#128640;</span> Campanha</button>
